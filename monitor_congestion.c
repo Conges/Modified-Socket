@@ -25,7 +25,7 @@ struct socket_conges{
     u16 sport, dport;           /* Source and destination ports */
     u32 saddr, daddr;           /* Source and destination addresses */        
     u16 ca_state;
-    u16 ca_state_repete_count;
+    u16 ca_state_arr[5];
     const struct sock *sk;
 };
 
@@ -37,12 +37,13 @@ static void update_msg(void){
     int i;
     update_iterator = (update_iterator + 1) %UPDATE_PERIOD;
     if(!update_iterator){
-        pr_debug("monitor_congestion: update message");
+        // pr_debug("monitor_congestion: update message");
         
         msg_len = 0;
         strcpy(msg,"");
         for(i = 0; i < conges_size; ++i){
-            msg_len += sprintf(line_msg , "monitor_congestion: %pI4h:%d -> %pI4h:%d ca_state: %d\n", &conges_array[i].saddr, conges_array[i].sport,&conges_array[i].daddr, conges_array[i].dport, conges_array[i].ca_state) ;
+            msg_len += sprintf(line_msg , "monitor_congestion: %pI4h:%d -> %pI4h:%d ca_states: %d %d %d %d %d\n", &conges_array[i].saddr, conges_array[i].sport,
+                &conges_array[i].daddr, conges_array[i].dport, conges_array[i].ca_state_arr[0], conges_array[i].ca_state_arr[1], conges_array[i].ca_state_arr[2], conges_array[i].ca_state_arr[3], conges_array[i].ca_state_arr[4]) ;
             strcat(msg,line_msg);
             // pr_debug("monitor_congestion: %pI4h:%d -> %pI4h:%d ca_state: %d\n", &conges_array[i].saddr, conges_array[i].sport,&conges_array[i].daddr, conges_array[i].dport, conges_array[i].ca_state);
             // pr_debug(line_msg);
@@ -57,7 +58,7 @@ int read_proc(struct file *filp,char *buf,size_t count,loff_t *offp ) {
     }
     msg_len_temp = msg_len_temp - count;
 
-    pr_debug("monitor_congestion: user read count =%d, msg_size = %d , msg is: %s\n", count, sizeof(msg), msg);
+    pr_debug("monitor_congestion: user read count =%d\n", count);
 
     copy_to_user(buf,msg, count);
 
@@ -108,7 +109,7 @@ static unsigned int ptcp_hook_func(const struct nf_hook_ops *ops,
     u16 sport, dport;           /* Source and destination ports */
     u32 saddr, daddr;           /* Source and destination addresses */
     int i = 0;
-    int ca_state = 0;   
+    u16 ca_state = 0;   
     struct inet_connection_sock *icsk ;
     // char *s_temp;
 
@@ -144,35 +145,47 @@ static unsigned int ptcp_hook_func(const struct nf_hook_ops *ops,
             return NF_ACCEPT;
         }
 
-        if(icsk->icsk_ca_state != 0){
-            /* Print packet route */
-            pr_debug("monitor_congestion: %pI4h:%d -> %pI4h:%d\n", &saddr, sport,&daddr, dport);
-            pr_debug("monitor_congestion: state = %d\n",(int)icsk->icsk_ca_state);
+        ca_state = icsk->icsk_ca_state;
+
+        if(ca_state > 4){
+            pr_debug("monitor_congestion: Strange number for state  %d\n",ca_state);
+            return NF_ACCEPT;
         }
 
-        ca_state = icsk->icsk_ca_state;
+        if(ca_state != 0){
+            /* Print packet route */
+            pr_debug("monitor_congestion: Non zero state: %pI4h:%d -> %pI4h:%d  state is %d\n", &saddr, sport,&daddr, dport, ca_state);
+        }
+
+        // TODO just initate the struct object if not match 
         struct socket_conges current_cs =  {
             .saddr = saddr,
             .daddr = daddr,
             .sport = sport,
             .dport = dport,
             .ca_state = ca_state,
+            .ca_state_arr = {0,0,0,0,0},
             .sk = sk
         };
 
         bool scg_found = false;
         for(; i <= conges_size; ++i){
             if(socket_conges_match(&current_cs, &conges_array[i])){
-                pr_debug("monitor_congestion: match\n");
-                conges_array[i].ca_state = current_cs.ca_state;
+                // pr_debug("monitor_congestion: match\n");
+                // Save last state value 
+                conges_array[i].ca_state = ca_state;
+                
+                // Increase the counter for this state
+                conges_array[i].ca_state_arr[ca_state]++;
                 scg_found = true;
                 break;
             }
         }
         if(!scg_found){
+            current_cs.ca_state_arr[ca_state]++;
             conges_array[conges_size] = current_cs; 
             conges_size = min(conges_size + 1 , MAX_SOCKETS_CONGS);
-            pr_debug("monitor_congestion: new array size is %d\n", conges_size);
+            // pr_debug("monitor_congestion: new array size is %d\n", conges_size);
         }
 
         // update it's output
@@ -180,8 +193,8 @@ static unsigned int ptcp_hook_func(const struct nf_hook_ops *ops,
 
     }
     else{
-        // pr_debug("monitor_congestion: %pI4h:%d -> %pI4h:%d\n", &saddr, sport,&daddr, dport);
-        // pr_debug("monitor_congestion: not found\n");
+        // sk not found
+        pr_debug("monitor_congestion: sk not found: %pI4h:%d -> %pI4h:%d\n", &saddr, sport,&daddr, dport);
     }
 
     return NF_ACCEPT;

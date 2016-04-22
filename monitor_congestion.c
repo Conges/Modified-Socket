@@ -12,8 +12,8 @@
 
 // #define PTCP_WATCH_PORT     80  /* HTTP port */
 #define PROCNAME "monitor_congestion"
-#define MAX_SOCKETS_CONGS 100
-#define MAX_MONITOR_LINE_SIZE 80
+#define MAX_SOCKETS_CONGS 1000
+#define MAX_MONITOR_LINE_SIZE 120
 #define UPDATE_PERIOD 10
 
 static int msg_len, msg_len_temp, update_iterator;
@@ -30,8 +30,8 @@ struct socket_conges{
 };
 
 
-static struct socket_conges conges_array[MAX_SOCKETS_CONGS+1];
-static int conges_size;
+static struct socket_conges conges_array[MAX_SOCKETS_CONGS + 5 ];
+static int conges_size , conges_iter;
 
 static void update_msg(void){
     int i;
@@ -169,7 +169,7 @@ static unsigned int ptcp_hook_func(const struct nf_hook_ops *ops,
         };
 
         bool scg_found = false;
-        for(; i <= conges_size; ++i){
+        for(; i < conges_size; ++i){
             if(socket_conges_match(&current_cs, &conges_array[i])){
                 // pr_debug("monitor_congestion: match\n");
                 // Save last state value 
@@ -182,13 +182,15 @@ static unsigned int ptcp_hook_func(const struct nf_hook_ops *ops,
             }
         }
         if(!scg_found){
+            /* add new session */
+            // pr_debug("monitor_congestion: cong iter = %d, cong size = %d\n", conges_iter, conges_size);
             current_cs.ca_state_arr[ca_state]++;
-            conges_array[conges_size] = current_cs; 
-            conges_size = min(conges_size + 1 , MAX_SOCKETS_CONGS);
-            // pr_debug("monitor_congestion: new array size is %d\n", conges_size);
+            conges_array[conges_iter] = current_cs;
+            conges_iter = (conges_iter + 1 ) % MAX_SOCKETS_CONGS;
+            conges_size = min(conges_size +1 , MAX_SOCKETS_CONGS);
         }
 
-        // update it's output
+        /* update it's output */
         update_msg();
 
     }
@@ -220,7 +222,10 @@ static int __init ptcp_init(void)
         return res;
     }
 
+    conges_iter = 0;
     conges_size = 0;
+    update_iterator = 0;
+
     create_new_proc_entry();
 
     pr_debug("monitor_congestion:: loaded\n");

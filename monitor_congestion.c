@@ -1,56 +1,36 @@
-#include <linux/module.h>
-#include <linux/netfilter.h>
-#include <linux/netfilter_ipv4.h>
-#include <linux/ip.h>
-#include <linux/tcp.h>
-#include <linux/proc_fs.h>  /* Necessary because we use proc fs */
-#include <linux/seq_file.h> /* for seq_file */
-#include <asm/uaccess.h>    /* for copy_*_user */
-#include <linux/sched.h>
-#include <linux/slab.h>
-#include <linux/string.h>
-
-// #define PTCP_WATCH_PORT     80  /* HTTP port */
-#define PROCNAME "monitor_congestion"
-#define MAX_SOCKETS_CONGS 1000
-#define MAX_MONITOR_LINE_SIZE 120
-#define UPDATE_PERIOD 10
+#include "monitor_congestion.h"
 
 static int msg_len, msg_len_temp, update_iterator;
 
 char msg[MAX_SOCKETS_CONGS * MAX_MONITOR_LINE_SIZE] ,line_msg[MAX_MONITOR_LINE_SIZE];
 
 static struct nf_hook_ops nfho;
-struct socket_conges{
-    u16 sport, dport;           /* Source and destination ports */
-    u32 saddr, daddr;           /* Source and destination addresses */        
-    u16 ca_state;
-    u16 ca_state_arr[5];
-    const struct sock *sk;
-};
 
 
 static struct socket_conges conges_array[MAX_SOCKETS_CONGS + 5 ];
 static int conges_size , conges_iter;
 
-static void update_msg(void){
+static void __update_msg(void){
     int i;
+    // pr_debug("monitor_congestion: update message");
+    msg_len = 0;
+    strcpy(msg,"");
+    for(i = 0; i < conges_size; ++i){
+        msg_len += sprintf(line_msg , "monitor_congestion: %pI4h:%d -> %pI4h:%d ca_states: %d %d %d %d %d\n", &conges_array[i].saddr, conges_array[i].sport,
+            &conges_array[i].daddr, conges_array[i].dport, conges_array[i].ca_state_arr[0], conges_array[i].ca_state_arr[1], conges_array[i].ca_state_arr[2], conges_array[i].ca_state_arr[3], conges_array[i].ca_state_arr[4]) ;
+        strcat(msg,line_msg);
+    }
+    msg_len_temp = msg_len;
+}
+
+/* Update output every ($UPDATE_PERIOD) packet*/
+static void update_msg(void){
     update_iterator = (update_iterator + 1) %UPDATE_PERIOD;
     if(!update_iterator){
-        // pr_debug("monitor_congestion: update message");
-        
-        msg_len = 0;
-        strcpy(msg,"");
-        for(i = 0; i < conges_size; ++i){
-            msg_len += sprintf(line_msg , "monitor_congestion: %pI4h:%d -> %pI4h:%d ca_states: %d %d %d %d %d\n", &conges_array[i].saddr, conges_array[i].sport,
-                &conges_array[i].daddr, conges_array[i].dport, conges_array[i].ca_state_arr[0], conges_array[i].ca_state_arr[1], conges_array[i].ca_state_arr[2], conges_array[i].ca_state_arr[3], conges_array[i].ca_state_arr[4]) ;
-            strcat(msg,line_msg);
-            // pr_debug("monitor_congestion: %pI4h:%d -> %pI4h:%d ca_state: %d\n", &conges_array[i].saddr, conges_array[i].sport,&conges_array[i].daddr, conges_array[i].dport, conges_array[i].ca_state);
-            // pr_debug(line_msg);
-        }
-        msg_len_temp = msg_len;
+        __update_msg();
     }
 }
+
 
 int read_proc(struct file *filp,char *buf,size_t count,loff_t *offp ) {
     if(count>msg_len_temp){
@@ -58,10 +38,8 @@ int read_proc(struct file *filp,char *buf,size_t count,loff_t *offp ) {
     }
     msg_len_temp = msg_len_temp - count;
 
-    pr_debug("monitor_congestion: user read count =%d\n", count);
-
+    // pr_debug("monitor_congestion: user read count =%d\n", count);
     copy_to_user(buf,msg, count);
-
     if(count==0)
         msg_len_temp = msg_len;
 
@@ -90,13 +68,6 @@ void create_new_proc_entry(void) {
 }
 
 
-static bool socket_conges_match(struct socket_conges *sc1, struct socket_conges *sc2){
-    // if(sc1->sport == sc2->dport && sc1->dport == sc2-> dport &&
-    //  sc1->saddr == sc2->saddr && sc1->daddr == sc2->daddr)
-    if(sc1->sk == sc2->sk)
-        return true;
-    return false;
-}
 
 static unsigned int ptcp_hook_func(const struct nf_hook_ops *ops,
                                    struct sk_buff *skb,

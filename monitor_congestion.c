@@ -209,7 +209,7 @@ static int __init ptcp_init(void)
     nfho.hook = (nf_hookfn *)ptcp_hook_func;    /* hook function */
 
     /* send packets */
-    nfho.hooknum = NF_INET_LOCAL_IN;
+    nfho.hooknum = NF_INET_POST_ROUTING;
     /* received packets */
     // nfho.hooknum = NF_INET_LOCAL_IN;
     

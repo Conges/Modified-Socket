@@ -22,6 +22,7 @@ struct socket_conges{
     u32 saddr, daddr;           /* Source and destination addresses */
     u16 ca_state;
     u16 ca_state_arr[5];
+    u32 transfer_size;
     const struct sock *sk;
 };
 

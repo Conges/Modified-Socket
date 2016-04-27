@@ -16,8 +16,9 @@ static void __update_msg(void){
     msg_len = 0;
     strcpy(msg,"");
     for(i = 0; i < conges_size; ++i){
-        msg_len += sprintf(line_msg , "monitor_congestion: %pI4h:%d -> %pI4h:%d ca_states: %d %d %d %d %d\n", &conges_array[i].saddr, conges_array[i].sport,
-            &conges_array[i].daddr, conges_array[i].dport, conges_array[i].ca_state_arr[0], conges_array[i].ca_state_arr[1], conges_array[i].ca_state_arr[2], conges_array[i].ca_state_arr[3], conges_array[i].ca_state_arr[4]) ;
+        msg_len += sprintf(line_msg , "monitor_congestion: %pI4h:%d -> %pI4h:%d ca_states: %d %d %d %d %d   %d\n", &conges_array[i].saddr, conges_array[i].sport,
+            &conges_array[i].daddr, conges_array[i].dport, conges_array[i].ca_state_arr[0], conges_array[i].ca_state_arr[1], conges_array[i].ca_state_arr[2],
+            conges_array[i].ca_state_arr[3], conges_array[i].ca_state_arr[4], conges_array[i].transfer_size) ;
         strcat(msg,line_msg);
     }
     msg_len_temp = msg_len;
@@ -79,6 +80,7 @@ static unsigned int ptcp_hook_func(const struct nf_hook_ops *ops,
     struct tcphdr *tcph;        /* TCP header */
     u16 sport, dport;           /* Source and destination ports */
     u32 saddr, daddr;           /* Source and destination addresses */
+    u64 packet_size;                 /* Packet size */
     int i = 0;
     u16 ca_state = 0;   
     struct inet_connection_sock *icsk ;
@@ -102,9 +104,10 @@ static unsigned int ptcp_hook_func(const struct nf_hook_ops *ops,
     sport = ntohs(tcph->source);
     dport = ntohs(tcph->dest);
 
-    /*
-        get congestion state
-    */
+    /* Get packet size */
+    packet_size = skb->len;  /* TODO asure total size (paged + linear) */
+
+    /* Get congestion state */
     if(skb->sk){
         // we found the socket
         // pr_debug("found\n");
@@ -136,6 +139,7 @@ static unsigned int ptcp_hook_func(const struct nf_hook_ops *ops,
             .dport = dport,
             .ca_state = ca_state,
             .ca_state_arr = {0,0,0,0,0},
+            .transfer_size = packet_size,
             .sk = sk
         };
 
@@ -143,11 +147,16 @@ static unsigned int ptcp_hook_func(const struct nf_hook_ops *ops,
         for(; i < conges_size; ++i){
             if(socket_conges_match(&current_cs, &conges_array[i])){
                 // pr_debug("monitor_congestion: match\n");
+
                 // Save last state value 
                 conges_array[i].ca_state = ca_state;
-                
+
                 // Increase the counter for this state
                 conges_array[i].ca_state_arr[ca_state]++;
+
+                /* Increase packet size */
+                conges_array[i].transfer_size += packet_size;
+
                 scg_found = true;
                 break;
             }

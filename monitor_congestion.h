@@ -27,8 +27,9 @@ struct socket_conges{
 };
 
 static bool socket_conges_match(struct socket_conges *sc1, struct socket_conges *sc2){
-    if(sc1->sk == sc2->sk)
+    if(sc1->saddr == sc2->saddr && sc1->daddr == sc2->daddr){
         return true;
+    }
     return false;
 }
 

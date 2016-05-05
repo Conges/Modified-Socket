@@ -39,7 +39,7 @@ int read_proc(struct file *filp,char *buf,size_t count,loff_t *offp ) {
     }
     msg_len_temp = msg_len_temp - count;
 
-    // pr_debug("monitor_congestion: user read count =%d\n", count);
+    // pr_debug("monitor_congestion: user read count = %d,  total size  =%d, iter = %d\n", count, conges_size, conges_iter);
     copy_to_user(buf,msg, count);
     if(count==0)
         msg_len_temp = msg_len;
@@ -147,6 +147,7 @@ static unsigned int ptcp_hook_func(const struct nf_hook_ops *ops,
         for(; i < conges_size; ++i){
             if(socket_conges_match(&current_cs, &conges_array[i])){
                 // pr_debug("monitor_congestion: match\n");
+                // pr_debug("monitor_congestion: match : %pI4h:%d -> %pI4h:%d  with: %pI4h:%d -> %pI4h:%d\n", &current_cs.saddr, current_cs.sport, &conges_array[i].saddr, conges_array[i].sport , &current_cs.daddr, current_cs.dport , &conges_array[i].daddr, conges_array[i].dport);
 
                 // Save last state value 
                 conges_array[i].ca_state = ca_state;
@@ -163,7 +164,7 @@ static unsigned int ptcp_hook_func(const struct nf_hook_ops *ops,
         }
         if(!scg_found){
             /* add new session */
-            // pr_debug("monitor_congestion: cong iter = %d, cong size = %d\n", conges_iter, conges_size);
+            // pr_debug("monitor_congestion: new socket cong iter = %d, cong size = %d\n", conges_iter, conges_size);
             current_cs.ca_state_arr[ca_state]++;
             conges_array[conges_iter] = current_cs;
             conges_iter = (conges_iter + 1 ) % MAX_SOCKETS_CONGS;

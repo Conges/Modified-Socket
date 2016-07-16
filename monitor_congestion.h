@@ -21,8 +21,8 @@ struct socket_conges{
     u16 sport, dport;           /* Source and destination ports */
     u32 saddr, daddr;           /* Source and destination addresses */
     u16 ca_state;
-    u16 ca_state_arr[5];
-    u32 transfer_size;
+    u32 ca_state_arr[5];
+    u64 transfer_size;
     const struct sock *sk;
 };
 
